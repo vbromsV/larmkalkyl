@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<title>Larmkalkyl</title>
+<style>
+  :root {
+    --bg: #0f172a; --card: #1e293b; --card2: #273449; --line: #334155;
+    --text: #f1f5f9; --muted: #94a3b8; --accent: #38bdf8; --good: #4ade80; --bad: #f87171; --warn: #fbbf24;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, Roboto, sans-serif; font-size: 16px; }
+  body { padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
+  .wrap { max-width: 560px; margin: 0 auto; padding: 0 12px 40px; }
+
+  /* Sticky resultat */
+  .top { position: sticky; top: 0; z-index: 10; background: var(--bg); padding: 10px 12px 8px;
+    border-bottom: 1px solid var(--line); }
+  .top-inner { max-width: 560px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .kpi { background: var(--card); border-radius: 12px; padding: 8px 12px; }
+  .kpi .l { font-size: 12px; color: var(--muted); }
+  .kpi .v { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .kpi .s { font-size: 12px; color: var(--muted); }
+  .kpi.prov .v { color: var(--good); }
+
+  .seg { display: flex; background: var(--card); border-radius: 10px; padding: 3px; margin: 12px 0 0; }
+  .seg button { flex: 1; border: 0; background: transparent; color: var(--muted); padding: 10px 6px;
+    border-radius: 8px; font-size: 15px; font-weight: 600; }
+  .seg button.on { background: var(--accent); color: #0f172a; }
+  .seg button small { display: block; font-weight: 400; font-size: 11px; opacity: .85; }
+
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 22px 4px 8px; }
+  .card { background: var(--card); border-radius: 12px; padding: 4px 12px; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0;
+    border-bottom: 1px solid var(--line); }
+  .row:last-child { border-bottom: 0; }
+  .row .lbl { flex: 1; min-width: 0; }
+  .row .lbl .h { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  input.in { width: 120px; background: var(--card2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 8px; padding: 10px; font-size: 17px; text-align: right; font-variant-numeric: tabular-nums; }
+  input.in:focus { outline: 2px solid var(--accent); border-color: transparent; }
+  .infield { display: flex; align-items: center; gap: 6px; }
+  .sign { width: 44px; height: 44px; border-radius: 8px; border: 1px solid var(--line); background: var(--card2);
+    color: var(--text); font-size: 20px; font-weight: 700; }
+  .sign.neg { background: #7f1d1d; border-color: #b91c1c; }
+
+  .stepper { display: flex; align-items: center; gap: 4px; }
+  .stepper button { width: 40px; height: 40px; border-radius: 8px; border: 0; background: var(--card2);
+    color: var(--text); font-size: 22px; font-weight: 700; }
+  .stepper .n { width: 30px; text-align: center; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .prod.changed .stepper .n { color: var(--accent); }
+  .tag { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 6px; background: var(--card2);
+    color: var(--muted); margin-left: 4px; vertical-align: middle; }
+  .plus { color: var(--good); } .minus { color: var(--bad); }
+
+  .note { font-size: 13px; padding: 8px 10px; border-radius: 8px; margin: 8px 0 4px; line-height: 1.4; }
+  .note.warn { background: #422006; color: var(--warn); }
+  .note.info { background: #0c2a3d; color: #bae6fd; }
+  .note.bad { background: #450a0a; color: #fecaca; }
+
+  .res .row { padding: 8px 0; }
+  .res .total { font-weight: 700; font-size: 18px; }
+  .res .big { font-size: 20px; font-weight: 700; color: var(--accent); }
+  .copy { border: 0; background: var(--card2); color: var(--muted); border-radius: 6px; padding: 4px 8px; font-size: 12px; margin-left: 6px; }
+  .reset { width: 100%; margin-top: 24px; padding: 14px; border-radius: 12px; border: 1px solid var(--line);
+    background: transparent; color: var(--muted); font-size: 15px; }
+  .hidden { display: none !important; }
+  details summary { cursor: pointer; padding: 10px 0; color: var(--muted); font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="top-inner">
+    <div class="kpi"><div class="l">Månadspris kund</div><div class="v" id="kManad">–</div><div class="s" id="kTotal">–</div></div>
+    <div class="kpi prov"><div class="l">Din provision</div><div class="v" id="kProv">–</div><div class="s" id="kProvS">&nbsp;</div></div>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="seg" id="paketSeg"></div>
+  <div class="seg" id="lageSeg">
+    <button data-lage="produkter" class="on">Produkter</button>
+    <button data-lage="manuell">Manuellt</button>
+  </div>
+
+  <!-- PRODUKTLÄGE -->
+  <section id="vyProdukter">
+    <h2>Produkter</h2>
+    <div class="card" id="prodLista"></div>
+    <div class="card" style="margin-top:8px">
+      <div class="row">
+        <div class="lbl">Övrigt (fritt belopp)<div class="h">T.ex. högtalare. Räknas som merförsäljning</div></div>
+        <input class="in" id="ovrigt" inputmode="numeric" placeholder="0">
+      </div>
+    </div>
+  </section>
+
+  <!-- MANUELLT LÄGE -->
+  <section id="vyManuell" class="hidden">
+    <h2>Belopp</h2>
+    <div class="card">
+      <div class="row">
+        <div class="lbl">Merförsäljning<div class="h">Summa tillagda produkter · +10 % provision</div></div>
+        <input class="in" id="merManuell" inputmode="numeric" placeholder="0">
+      </div>
+      <div class="row">
+        <div class="lbl">Borttaget ur paketet<div class="h">Sänker priset · påverkar ej provision</div></div>
+        <input class="in" id="bortManuell" inputmode="numeric" placeholder="0">
+      </div>
+    </div>
+  </section>
+
+  <h2>Justering &amp; rabatt</h2>
+  <div class="card">
+    <div class="row">
+      <div class="lbl">Justering startpaket<div class="h" id="justH">+ ger +10 % · − ger −20 % provision</div></div>
+      <div class="infield"><button class="sign" id="justSign">+</button><input class="in" id="justering" inputmode="numeric" placeholder="0" style="width:100px"></div>
+    </div>
+    <div class="row">
+      <div class="lbl">Rabatt<div class="h" id="rabattH">−20 % provision</div></div>
+      <input class="in" id="rabatt" inputmode="numeric" placeholder="0">
+    </div>
+  </div>
+  <div id="rabattNote"></div>
+
+  <h2>Installation &amp; utköp</h2>
+  <div class="card">
+    <div class="row">
+      <div class="lbl">Installation (kundens pris)<div class="h" id="instH">Inkl. 579 kr uppläggning · 0 = ingen</div></div>
+      <input class="in" id="installation" inputmode="numeric" placeholder="0">
+    </div>
+    <div class="row">
+      <div class="lbl">Utköp bindningstid (X)<div class="h" id="utkopH">× 1,06 läggs på orderbeloppet</div></div>
+      <input class="in" id="utkop" inputmode="numeric" placeholder="0">
+    </div>
+  </div>
+  <div id="instNote"></div>
+
+  <h2>Att fylla i kontraktet</h2>
+  <div class="card res" id="kontrakt"></div>
+
+  <h2>Din provision</h2>
+  <div class="card res" id="provision"></div>
+
+  <h2>Uträkning månadspris</h2>
+  <div class="card res" id="utrakning"></div>
+
+  <h2>Justera månadspriset</h2>
+  <div class="card res" id="tips"></div>
+
+  <button class="reset" id="reset">Nollställ allt</button>
+</div>
+
+<script src="calc.js"></script>
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const fmt = (x, dec) => {
+    if (Object.is(x, -0) || Math.abs(x) < 0.005) x = 0;
+    const d = dec != null ? dec : (Math.round(x) === Math.round(x * 100) / 100 ? 0 : 2);
+    return x.toLocaleString('sv-SE', { minimumFractionDigits: d, maximumFractionDigits: d });
+  };
+  const kr = (x, dec) => fmt(x, dec) + ' kr';
+  const sgn = (x, dec) => (x > 0.004 ? '+' : x < -0.004 ? '−' : '') + kr(Math.abs(x), dec);
+  const cls = (x) => (x > 0.004 ? 'plus' : x < -0.004 ? 'minus' : '');
+
+  const start = () => ({
+    paket: 'standard', lage: 'produkter', antal: Object.fromEntries(PRODUKTER.map((p) => [p.id, p.ingar])),
+    ovrigt: 0, merManuell: 0, bortManuell: 0, justering: 0, justNeg: false, rabatt: 0, installation: 0, utkop: 0,
+  });
+  let s = start();
+
+  // Paketväljare
+  $('paketSeg').innerHTML = Object.entries(PAKET).map(([k, p]) =>
+    `<button data-paket="${k}">${p.namn} ${fmt(p.pris)} kr<small>${p.info}</small></button>`).join('');
+  $('paketSeg').addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return; s.paket = b.dataset.paket; render();
+  });
+  $('lageSeg').addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return; s.lage = b.dataset.lage; render();
+  });
+
+  // Produktlista
+  $('prodLista').innerHTML = PRODUKTER.map((p) => `
+    <div class="row prod" id="r_${p.id}">
+      <div class="lbl">${p.namn}${p.kort ? `<span class="tag">${p.kort}</span>` : ''}
+        <div class="h"><span class="num">${fmt(p.pris)} kr</span> · ≈ ${fmt(p.pris / KONST.manader, 0)} kr/mån${p.ingar ? ` · ${p.ingar} ingår` : ''} <span id="d_${p.id}"></span></div></div>
+      <div class="stepper"><button data-id="${p.id}" data-d="-1">−</button><span class="n" id="n_${p.id}"></span><button data-id="${p.id}" data-d="1">+</button></div>
+    </div>`).join('');
+  $('prodLista').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-id]'); if (!b) return;
+    const id = b.dataset.id; s.antal[id] = Math.max(0, (s.antal[id] || 0) + Number(b.dataset.d)); render();
+  });
+
+  // Inmatningsfält
+  const falt = ['ovrigt', 'merManuell', 'bortManuell', 'justering', 'rabatt', 'installation', 'utkop'];
+  falt.forEach((f) => {
+    $(f).addEventListener('input', (e) => {
+      const v = e.target.value.replace(/[^\d]/g, '');
+      if (v !== e.target.value) e.target.value = v;
+      s[f] = Number(v) || 0; render(true);
+    });
+    $(f).addEventListener('focus', (e) => setTimeout(() => e.target.select(), 0));
+  });
+  $('justSign').addEventListener('click', () => { s.justNeg = !s.justNeg; render(); });
+  $('reset').addEventListener('click', () => {
+    s = start(); falt.forEach((f) => ($(f).value = '')); render(); window.scrollTo(0, 0);
+  });
+
+  const rad = (lbl, val, extra = '', klass = '') =>
+    `<div class="row ${klass}"><div class="lbl">${lbl}</div><div class="num ${extra}">${val}</div></div>`;
+
+  function render() {
+    const inp = { ...s, justering: s.justNeg ? -s.justering : s.justering };
+    const r = berakna(inp);
+
+    // Väljare
+    document.querySelectorAll('#paketSeg button').forEach((b) => b.classList.toggle('on', b.dataset.paket === s.paket));
+    document.querySelectorAll('#lageSeg button').forEach((b) => b.classList.toggle('on', b.dataset.lage === s.lage));
+    $('vyProdukter').classList.toggle('hidden', s.lage !== 'produkter');
+    $('vyManuell').classList.toggle('hidden', s.lage !== 'manuell');
+    $('justSign').textContent = s.justNeg ? '−' : '+';
+    $('justSign').classList.toggle('neg', s.justNeg);
+
+    PRODUKTER.forEach((p) => {
+      const n = s.antal[p.id] || 0, d = n - p.ingar;
+      $('n_' + p.id).textContent = n;
+      $('r_' + p.id).classList.toggle('changed', d !== 0);
+      $('d_' + p.id).innerHTML = d ? `· <b class="${d > 0 ? 'plus' : 'minus'}">${sgn(d * p.pris)}</b>` : '';
+    });
+
+    // Topp
+    $('kManad').textContent = r.manad + ' kr';
+    $('kTotal').textContent = 'Totalt ' + kr(r.justeratTotalt);
+    $('kProv').textContent = kr(r.provision);
+    $('kProvS').textContent = r.overTak ? '⚠ Rabatt över taket' : ' ';
+
+    // Hjälptexter
+    const j = inp.justering;
+    $('justH').innerHTML = j ? `Provision <b class="${cls(j > 0 ? r.prov.justeringPlus : r.prov.justeringMinus)}">${sgn(j > 0 ? r.prov.justeringPlus : r.prov.justeringMinus)}</b> · + ger +10 %, − ger −20 %` : '+ ger +10 % · − ger −20 % provision';
+    $('rabattH').innerHTML = `Max ${kr(r.rabattTak)} på denna nivå` + (r.rabatt ? ` · provision <b class="minus">${sgn(r.prov.rabatt)}</b>` : '');
+    $('instH').innerHTML = r.installation ? `I kontraktet: <b>${kr(r.installationKontrakt)}</b> · provision <b class="plus">${sgn(r.prov.installation)}</b>` : 'Inkl. 579 kr uppläggning · 0 = ingen';
+    $('utkopH').innerHTML = r.utkopX ? `Uppsägningskomp.: <b>${kr(r.utkop)}</b> (${fmt(r.utkopX)} × 1,06)` : '× 1,06 läggs på orderbeloppet';
+
+    // Rabattnotis
+    let rn = '';
+    if (r.overTak) rn += `<div class="note bad">Rabatten (${kr(r.rabatt)}) är över taket ${kr(r.rabattTak)} för ordervärde ${kr(r.rabattUnderlag)}.</div>`;
+    if (r.nastaNiva) rn += `<div class="note info">Ordervärde före rabatt: <b>${kr(r.rabattUnderlag)}</b>. Lägg till <b>${kr(r.nastaNiva.saknas)}</b> för att nå ${kr(r.nastaNiva.grans)} → max rabatt ${kr(r.nastaNiva.tak)}.</div>`;
+    else rn += `<div class="note info">Ordervärde före rabatt: <b>${kr(r.rabattUnderlag)}</b> – högsta rabattnivån (max ${kr(r.rabattTak)}).</div>`;
+    $('rabattNote').innerHTML = rn;
+
+    $('instNote').innerHTML = r.installation > 0 && r.installation <= KONST.upplaggningsavgift
+      ? `<div class="note warn">Installation ${kr(r.installation)} är inte mer än uppläggningsavgiften 579 kr – inget att ange i kontraktet och ingen provision.</div>` : '';
+
+    // Kontrakt
+    $('kontrakt').innerHTML =
+      rad(`Nytt pris startpaket<div class="h">${fmt(r.paketPris)}${r.justering ? ' ' + sgn(r.justering) : ''} ${sgn(r.totaljustering)} avrundning</div>`, kr(r.nyttPrisStartpaket), 'big') +
+      (r.merforsaljning ? rad('Merförsäljning', sgn(r.merforsaljning), 'plus') : '') +
+      (r.borttaget ? rad('Borttaget ur paketet', sgn(-r.borttaget), 'minus') : '') +
+      (r.rabatt ? rad('Rabatt', sgn(-r.rabatt), 'minus') : '') +
+      (r.utkop ? rad('Uppsägningskompensation', kr(r.utkop)) : '') +
+      rad('<b>Totalt orderbelopp</b>', kr(r.justeratTotalt), 'total') +
+      rad('<b>Månadskostnad</b> (72 mån)', r.manad + ' kr/mån', 'big') +
+      rad('Installation att ange<div class="h">' + (r.installation ? `Kundens pris ${kr(r.installation)} − 579 kr uppläggning` : 'Ingen installation · kunden betalar 579 kr uppläggning') + '</div>', kr(r.installationKontrakt), 'big');
+
+    // Provision
+    const P = r.prov;
+    let ph = rad('Grundprovision', kr(P.grund));
+    if (r.merforsaljning) ph += rad(`Merförsäljning<div class="h">${fmt(r.merforsaljning)} × 10 %</div>`, sgn(P.merforsaljning), cls(P.merforsaljning));
+    if (P.justeringPlus) ph += rad(`Justering startpaket<div class="h">${fmt(r.justering)} × 10 %</div>`, sgn(P.justeringPlus), 'plus');
+    if (r.rabatt) ph += rad(`Rabatt<div class="h">${fmt(r.rabatt)} × 20 %</div>`, sgn(P.rabatt), 'minus');
+    if (P.justeringMinus) ph += rad(`Justering startpaket (minus)<div class="h">${fmt(-r.justering)} × 20 %</div>`, sgn(P.justeringMinus), 'minus');
+    if (r.installationKontrakt) ph += rad(`Installation<div class="h">${fmt(r.installationKontrakt)} × 30 %</div>`, sgn(P.installation), 'plus');
+    ph += rad(`Avrundningsjustering<div class="h">${sgn(r.totaljustering)} × ${r.totaljustering > 0 ? '10' : '20'} %</div>`, sgn(P.avrundning), cls(P.avrundning));
+    ph += rad('<b>Totalt till dig</b>', kr(r.provision), 'total plus');
+    $('provision').innerHTML = ph;
+
+    // Uträkning
+    $('utrakning').innerHTML =
+      rad('Startpaket', kr(r.paketPris)) +
+      (r.merforsaljning ? rad('Merförsäljning', sgn(r.merforsaljning), 'plus') : '') +
+      (r.borttaget ? rad('Borttaget', sgn(-r.borttaget), 'minus') : '') +
+      (r.justering ? rad('Justering', sgn(r.justering), cls(r.justering)) : '') +
+      (r.rabatt ? rad('Rabatt', sgn(-r.rabatt), 'minus') : '') +
+      (r.utkop ? rad('Utköp × 1,06', sgn(r.utkop), 'plus') : '') +
+      rad('<b>Orderbelopp före avrundning</b>', kr(r.totalt), 'total') +
+      rad(`Exakt månadsbelopp<div class="h">${fmt(r.totalt)} / 72 + 49</div>`, kr(r.exaktManad, 2)) +
+      rad('Avrundat till 9-tal', r.manad + ' kr') +
+      rad(`Totaljustering<div class="h">(${r.manad} − ${fmt(r.exaktManad, 2)}) × 72</div>`, sgn(r.totaljustering), cls(r.totaljustering)) +
+      rad('<b>Justerat orderbelopp</b>', kr(r.justeratTotalt), 'total');
+
+    // Tips
+    $('tips').innerHTML = r.grannar.map((g) =>
+      rad(`För exakt <b>${g.manad} kr/mån</b><div class="h">Orderbelopp ${kr(g.totalt)} · ingen avrundning</div>`,
+        `${g.andring > 0 ? 'Justera' : 'Sänk'} ${sgn(g.andring)}`, cls(g.andring))).join('') +
+      rad(`Nuvarande ${r.manad} kr/mån exakt<div class="h">Orderbelopp ${kr(r.justeratTotalt)}</div>`, sgn(r.totaljustering === 0 ? 0 : r.justeratTotalt - r.totalt), cls(r.justeratTotalt - r.totalt));
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>

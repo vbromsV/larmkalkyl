@@ -1,0 +1,53 @@
+name: Bygg Android-app
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bygg:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Installera Capacitor
+        run: npm install
+
+      - name: Skapa Android-projekt
+        run: |
+          npx cap add android
+          npx cap sync android
+
+      - name: Samma signeringsnyckel varje gång (så uppdateringar går att installera)
+        run: |
+          mkdir -p ~/.android
+          cp signering/debug.keystore ~/.android/debug.keystore
+
+      - name: Bygg APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+          cp app/build/outputs/apk/debug/app-debug.apk ../Larmkalkyl.apk
+
+      - name: Publicera som nedladdning
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete senaste --yes --cleanup-tag || true
+          gh release create senaste Larmkalkyl.apk \
+            --title "Larmkalkyl – senaste versionen" \
+            --notes "Byggd $(date '+%Y-%m-%d %H:%M') UTC från commit ${GITHUB_SHA::7}. Ladda ner Larmkalkyl.apk och installera."
