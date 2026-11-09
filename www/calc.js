@@ -105,42 +105,39 @@ function berakna(inp) {
     borttaget = Math.max(0, heltal(inp.bortManuell));
   }
 
-  const justering = heltal(inp.justering);
-  const justPlus = Math.max(0, justering);
-  const justMinus = Math.max(0, -justering);
+  // Extra belopp läggs alltid PÅ startpaketet (aldrig minus – avdrag görs som rabatt)
+  const justering = Math.max(0, heltal(inp.justering));
   const rabatt = Math.max(0, heltal(inp.rabatt));
   const utkopX = Math.max(0, heltal(inp.utkop));
   const utkop = Math.round(utkopX * K.utkopFaktor);
   const installation = Math.max(0, heltal(inp.installation));
   const installationKontrakt = installation > 0 ? Math.max(0, installation - K.upplaggningsavgift) : 0;
 
-  // Orderbelopp före eventuell månadsprisändring/avrundning
-  const grundTotalt = paketPris + merforsaljning - borttaget + justering - rabatt + utkop;
   const M = K.manader, A = K.adminavgift;
+
+  // Orderbelopp utifrån inmatade fält (exakt, ingen avrundning)
+  const grundTotalt = paketPris + merforsaljning - borttaget + justering - rabatt + utkop;
   const exaktFore = grundTotalt / M + A;
+  const autoManad = Math.round(exaktFore); // anges alltid i heltal
 
-  // Avrundat alternativ (visas alltid)
-  const avrundatManad = avrunda9(grundTotalt + A * M);
-  const avrundatJustering = (avrundatManad - A) * M - grundTotalt;
-
-  // Läge för månadspriset: 'eget' (inskrivet), 'avrundat' (9-tal) eller 'exakt'
+  // Manuellt ändrat månadspris eller totalbelopp
+  // Lägre  => skillnaden blir rabatt (startpaketet oförändrat)
+  // Högre  => skillnaden läggs på startpaketets pris
   const malManad = heltal(inp.malManad);
-  const manadsLage = malManad > A ? 'eget' : inp.avrunda ? 'avrundat' : 'exakt';
+  const malTotal = heltal(inp.malTotal);
+  let mal = null, malTyp = null;
+  if (malManad > A) { mal = (malManad - A) * M; malTyp = 'manad'; }
+  else if (malTotal > 0) { mal = malTotal; malTyp = 'total'; }
+  const andring = mal == null ? 0 : mal - grundTotalt;
+  const manadsPlus = Math.max(0, andring);
+  const manadsRabatt = Math.max(0, -andring);
 
-  let manadsPlus = 0, manadsRabatt = 0, totaljustering = 0;
-  if (manadsLage === 'eget') {
-    const d = (malManad - A) * M - grundTotalt;
-    manadsPlus = Math.max(0, d);   // läggs på startpaketets pris (+10 %)
-    manadsRabatt = Math.max(0, -d); // läggs som rabatt (−20 %)
-  } else if (manadsLage === 'avrundat') {
-    totaljustering = avrundatJustering;
-  }
-  const totalt = grundTotalt + manadsPlus - manadsRabatt + totaljustering;
+  const totalt = grundTotalt + andring;
   const exaktManad = totalt / M + A;
-  const manad = manadsLage === 'exakt' ? Math.round(exaktManad * 100) / 100 : exaktManad;
+  const manad = malTyp === 'manad' ? malManad : Math.round(exaktManad);
 
   // Rabattrappa: ordervärde före rabatt (utan utköp)
-  const rabattUnderlag = paketPris + merforsaljning - borttaget + justPlus + manadsPlus;
+  const rabattUnderlag = paketPris + merforsaljning - borttaget + justering + manadsPlus;
   const rabattTotalt = rabatt + manadsRabatt;
   const tak = rabattTak(rabattUnderlag);
   const nastaNiva = nastaRabattNiva(rabattUnderlag);
@@ -149,25 +146,17 @@ function berakna(inp) {
   const prov = {
     grund: K.grundprovision,
     merforsaljning: merforsaljning * K.merforsaljningProc,
-    justeringPlus: justPlus * K.merforsaljningProc,
+    justeringPlus: justering * K.merforsaljningProc,
     manadsPlus: manadsPlus * K.merforsaljningProc,
     rabatt: -rabatt * K.rabattProc,
     manadsRabatt: -manadsRabatt * K.rabattProc,
-    justeringMinus: -justMinus * K.rabattProc,
     installation: installationKontrakt * K.installationProc,
-    avrundning: totaljustering > 0
-      ? totaljustering * K.avrundningPlusProc
-      : totaljustering * K.avrundningMinusProc,
   };
   const provision = Object.values(prov).reduce((a, b) => a + b, 0);
-  const provAvrundat = totaljustering === 0 && manadsLage === 'exakt'
-    ? provision + (avrundatJustering > 0 ? avrundatJustering * K.avrundningPlusProc : avrundatJustering * K.avrundningMinusProc)
-    : null;
 
-  // Förslag: närmaste 9-tal under och över (utan avrundning)
+  // Förslag: närmaste 9-tal runt det exakta priset
   const forsta9 = Math.floor((exaktFore - 9) / 10) * 10 + 9;
-  const kandidater = [forsta9 - 10, forsta9, forsta9 + 10, forsta9 + 20].filter((m) => m > A);
-  const grannar = kandidater.map((m) => {
+  const grannar = [forsta9 - 10, forsta9, forsta9 + 10, forsta9 + 20].filter((m) => m > A).map((m) => {
     const d = (m - A) * M - grundTotalt;
     return { manad: m, andring: d, prov: d > 0 ? d * K.merforsaljningProc : d * K.rabattProc };
   });
@@ -176,12 +165,10 @@ function berakna(inp) {
     paketPris, merforsaljning, borttaget, rader, justering, rabatt, utkopX, utkop,
     installation, installationKontrakt,
     rabattUnderlag, rabattTak: tak, rabattTotalt, overTak: rabattTotalt > tak, nastaNiva,
-    grundTotalt, exaktFore, avrundatManad, avrundatJustering, manadsLage, malManad,
-    manadsPlus, manadsRabatt,
-    totalt, exaktManad, manad, totaljustering, justeratTotalt: totalt,
-    nyttPrisStartpaket: paketPris + justering + manadsPlus + totaljustering,
+    grundTotalt, exaktFore, autoManad, malTyp, malManad, andring, manadsPlus, manadsRabatt,
+    totalt, exaktManad, manad,
+    nyttPrisStartpaket: paketPris + justering + manadsPlus,
     prov, provision: Math.round(provision * 100) / 100,
-    provAvrundat: provAvrundat == null ? null : Math.round(provAvrundat * 100) / 100,
     grannar,
   };
 }
