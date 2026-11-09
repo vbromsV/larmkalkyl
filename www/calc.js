@@ -114,25 +114,45 @@ function berakna(inp) {
   const installation = Math.max(0, heltal(inp.installation));
   const installationKontrakt = installation > 0 ? Math.max(0, installation - K.upplaggningsavgift) : 0;
 
+  // Orderbelopp före eventuell månadsprisändring/avrundning
+  const grundTotalt = paketPris + merforsaljning - borttaget + justering - rabatt + utkop;
+  const M = K.manader, A = K.adminavgift;
+  const exaktFore = grundTotalt / M + A;
+
+  // Avrundat alternativ (visas alltid)
+  const avrundatManad = avrunda9(grundTotalt + A * M);
+  const avrundatJustering = (avrundatManad - A) * M - grundTotalt;
+
+  // Läge för månadspriset: 'eget' (inskrivet), 'avrundat' (9-tal) eller 'exakt'
+  const malManad = heltal(inp.malManad);
+  const manadsLage = malManad > A ? 'eget' : inp.avrunda ? 'avrundat' : 'exakt';
+
+  let manadsPlus = 0, manadsRabatt = 0, totaljustering = 0;
+  if (manadsLage === 'eget') {
+    const d = (malManad - A) * M - grundTotalt;
+    manadsPlus = Math.max(0, d);   // läggs på startpaketets pris (+10 %)
+    manadsRabatt = Math.max(0, -d); // läggs som rabatt (−20 %)
+  } else if (manadsLage === 'avrundat') {
+    totaljustering = avrundatJustering;
+  }
+  const totalt = grundTotalt + manadsPlus - manadsRabatt + totaljustering;
+  const exaktManad = totalt / M + A;
+  const manad = manadsLage === 'exakt' ? Math.round(exaktManad * 100) / 100 : exaktManad;
+
   // Rabattrappa: ordervärde före rabatt (utan utköp)
-  const rabattUnderlag = paketPris + merforsaljning - borttaget + justPlus;
+  const rabattUnderlag = paketPris + merforsaljning - borttaget + justPlus + manadsPlus;
+  const rabattTotalt = rabatt + manadsRabatt;
   const tak = rabattTak(rabattUnderlag);
   const nastaNiva = nastaRabattNiva(rabattUnderlag);
-
-  // Kund
-  const totalt = paketPris + merforsaljning - borttaget + justering - rabatt + utkop;
-  const summa72 = totalt + K.adminavgift * K.manader;
-  const exaktManad = summa72 / K.manader;
-  const manad = avrunda9(summa72);
-  const totaljustering = (manad - K.adminavgift) * K.manader - totalt;
-  const justeratTotalt = totalt + totaljustering;
 
   // Provision
   const prov = {
     grund: K.grundprovision,
     merforsaljning: merforsaljning * K.merforsaljningProc,
     justeringPlus: justPlus * K.merforsaljningProc,
+    manadsPlus: manadsPlus * K.merforsaljningProc,
     rabatt: -rabatt * K.rabattProc,
+    manadsRabatt: -manadsRabatt * K.rabattProc,
     justeringMinus: -justMinus * K.rabattProc,
     installation: installationKontrakt * K.installationProc,
     avrundning: totaljustering > 0
@@ -140,20 +160,28 @@ function berakna(inp) {
       : totaljustering * K.avrundningMinusProc,
   };
   const provision = Object.values(prov).reduce((a, b) => a + b, 0);
+  const provAvrundat = totaljustering === 0 && manadsLage === 'exakt'
+    ? provision + (avrundatJustering > 0 ? avrundatJustering * K.avrundningPlusProc : avrundatJustering * K.avrundningMinusProc)
+    : null;
 
-  // Tips: orderbelopp som ger exakt ett 9-tal (ingen avrundning)
-  const grannar = [manad - 10, manad + 10].map((m) => {
-    const behovsTotalt = (m - K.adminavgift) * K.manader;
-    return { manad: m, totalt: behovsTotalt, andring: behovsTotalt - totalt };
+  // Förslag: närmaste 9-tal under och över (utan avrundning)
+  const forsta9 = Math.floor((exaktFore - 9) / 10) * 10 + 9;
+  const kandidater = [forsta9 - 10, forsta9, forsta9 + 10, forsta9 + 20].filter((m) => m > A);
+  const grannar = kandidater.map((m) => {
+    const d = (m - A) * M - grundTotalt;
+    return { manad: m, andring: d, prov: d > 0 ? d * K.merforsaljningProc : d * K.rabattProc };
   });
 
   return {
     paketPris, merforsaljning, borttaget, rader, justering, rabatt, utkopX, utkop,
     installation, installationKontrakt,
-    rabattUnderlag, rabattTak: tak, overTak: rabatt > tak, nastaNiva,
-    totalt, exaktManad, manad, totaljustering, justeratTotalt,
-    nyttPrisStartpaket: paketPris + justering + totaljustering,
+    rabattUnderlag, rabattTak: tak, rabattTotalt, overTak: rabattTotalt > tak, nastaNiva,
+    grundTotalt, exaktFore, avrundatManad, avrundatJustering, manadsLage, malManad,
+    manadsPlus, manadsRabatt,
+    totalt, exaktManad, manad, totaljustering, justeratTotalt: totalt,
+    nyttPrisStartpaket: paketPris + justering + manadsPlus + totaljustering,
     prov, provision: Math.round(provision * 100) / 100,
+    provAvrundat: provAvrundat == null ? null : Math.round(provAvrundat * 100) / 100,
     grannar,
   };
 }
