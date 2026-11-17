@@ -154,18 +154,22 @@ function berakna(inp) {
   };
   const provision = Object.values(prov).reduce((a, b) => a + b, 0);
 
-  // Förslag: närmaste 9-tal runt det exakta priset
+  // Förslag: närmaste 9-tal runt nuvarande pris. Beloppen räknas från läget UTAN rabatt
+  // och utan extra belopp (de två kan aldrig kombineras): sänkning => rabatt, höjning => startpaket.
+  const utanTotalt = grundTotalt + rabatt - justering;
+  const provUtan = provision - prov.rabatt - prov.justeringPlus - prov.manadsPlus - prov.manadsRabatt;
   const forsta9 = Math.floor((exaktFore - 9) / 10) * 10 + 9;
   const grannar = [forsta9 - 10, forsta9, forsta9 + 10, forsta9 + 20].filter((m) => m > A).map((m) => {
-    const d = (m - A) * M - grundTotalt;
-    return { manad: m, andring: d, prov: d > 0 ? d * K.merforsaljningProc : d * K.rabattProc };
+    const d = (m - A) * M - utanTotalt;
+    const effekt = d > 0 ? d * K.merforsaljningProc : d * K.rabattProc;
+    return { manad: m, andring: d, prov: Math.round((provUtan + effekt) * 100) / 100 };
   });
 
   return {
     paketPris, merforsaljning, borttaget, rader, justering, rabatt, utkopX, utkop,
     installation, installationKontrakt,
     rabattUnderlag, rabattTak: tak, rabattTotalt, overTak: rabattTotalt > tak, nastaNiva,
-    grundTotalt, exaktFore, autoManad, malTyp, malManad, andring, manadsPlus, manadsRabatt,
+    grundTotalt, utanTotalt, exaktFore, autoManad, malTyp, malManad, andring, manadsPlus, manadsRabatt,
     totalt, exaktManad, manad,
     nyttPrisStartpaket: paketPris + justering + manadsPlus,
     prov, provision: Math.round(provision * 100) / 100,

@@ -191,7 +191,7 @@
   const start = () => ({
     paket: 'standard', lage: 'produkter', antal: Object.fromEntries(PRODUKTER.map((p) => [p.id, p.ingar])),
     ovrigt: 0, merManuell: 0, bortManuell: 0, justering: 0, rabatt: 0, installation: 0, utkop: 0,
-    autoR: 0, autoJ: 0, // del av rabatt/extra belopp som lagts in via månadspris/total
+    auto: null, notis: '', // auto = {rabatt, justering} före anpassning till månadspris
   });
   let s = start();
 
@@ -220,12 +220,13 @@
   // Inmatningsfält
   // Ändrat månadspris/total: skillnaden skrivs in i rabattfältet (sänkning)
   // eller i fältet för extra belopp på startpaketet (höjning).
+  // Rabatt och påslag på startpaketet kan aldrig finnas samtidigt: ligger totalen under
+  // "utan rabatt" blir skillnaden rabatt, annars läggs den på startpaketet.
   function sattTotal(mal) {
-    const basR = s.rabatt - s.autoR, basJ = s.justering - s.autoJ;
-    const bas = berakna({ ...s, rabatt: basR, justering: basJ }).totalt;
+    if (!s.auto) s.auto = { rabatt: s.rabatt, justering: s.justering };
+    const bas = berakna({ ...s, rabatt: 0, justering: 0 }).totalt;
     const d = mal - bas;
-    s.autoR = Math.max(0, -d); s.autoJ = Math.max(0, d);
-    s.rabatt = basR + s.autoR; s.justering = basJ + s.autoJ;
+    s.rabatt = Math.max(0, -d); s.justering = Math.max(0, d); s.notis = '';
     $('rabatt').value = s.rabatt || ''; $('justering').value = s.justering || '';
   }
   const manadTillTotal = (m) => (m - KONST.adminavgift) * KONST.manader;
@@ -235,7 +236,8 @@
   });
   $('malNote').addEventListener('click', (e) => {
     if (!e.target.closest('#aterstall')) return;
-    s.rabatt -= s.autoR; s.justering -= s.autoJ; s.autoR = 0; s.autoJ = 0;
+    if (s.auto) { s.rabatt = s.auto.rabatt; s.justering = s.auto.justering; }
+    s.auto = null; s.notis = '';
     $('rabatt').value = s.rabatt || ''; $('justering').value = s.justering || ''; render();
   });
   ['malManad', 'malTotal'].forEach((f) => {
@@ -256,8 +258,13 @@
       const v = e.target.value.replace(/[^\d]/g, '');
       if (v !== e.target.value) e.target.value = v;
       s[f] = Number(v) || 0;
-      if (f === 'rabatt') s.autoR = 0;
-      if (f === 'justering') s.autoJ = 0;
+      s.auto = null; s.notis = '';
+      if (f === 'rabatt' && s.rabatt > 0 && s.justering > 0) {
+        s.justering = 0; $('justering').value = ''; s.notis = 'Extra belopp på startpaketet nollställdes – rabatt och påslag kan inte kombineras.';
+      }
+      if (f === 'justering' && s.justering > 0 && s.rabatt > 0) {
+        s.rabatt = 0; $('rabatt').value = ''; s.notis = 'Rabatten nollställdes – rabatt och påslag kan inte kombineras.';
+      }
       render();
     });
     $(f).addEventListener('focus', (e) => setTimeout(() => e.target.select(), 0));
@@ -281,18 +288,19 @@
     $('manadH').innerHTML = `Exakt ${kr(r.exaktManad, 2)} · avrundat till heltal`;
     $('totalH').innerHTML = 'Ändra → rabatt eller startpaket justeras';
     let mn = '';
-    if (s.autoR || s.autoJ) {
+    if (s.auto) {
       mn = `<div class="note info">Anpassat efter månadspriset: ` +
-        (s.autoJ ? `<b>+${kr(s.autoJ)}</b> lagt i extra belopp på startpaketet · provision <b class="plus">${sgn(s.autoJ * KONST.merforsaljningProc)}</b>`
-          : `<b>${kr(s.autoR)}</b> lagt i rabattfältet · provision <b class="minus">${sgn(-s.autoR * KONST.rabattProc)}</b>`) +
+        (s.justering ? `<b>+${kr(s.justering)}</b> på startpaketets pris (ingen rabatt kvar) · provision <b class="plus">${sgn(r.prov.justeringPlus)}</b>`
+          : s.rabatt ? `<b>${kr(s.rabatt)}</b> rabatt · provision <b class="minus">${sgn(r.prov.rabatt)}</b>`
+          : 'ingen rabatt och inget påslag behövs.') +
         `<br><button class="linkbtn" id="aterstall">Ångra anpassningen</button></div>`;
     }
+    if (s.notis) mn += `<div class="note warn">${s.notis}</div>`;
     $('malNote').innerHTML = mn;
-    const rb = (s.autoR || s.autoJ) ? berakna({ ...s, rabatt: s.rabatt - s.autoR, justering: s.justering - s.autoJ }) : r;
-    $('forslag').innerHTML = `<div class="h" style="font-size:12px;color:var(--muted);padding-top:8px">Snabbval månadspris (utgår från ${kr(rb.exaktManad, 2)}):</div>
-      <div class="chips">${rb.grannar.map((g) => `<button class="chip ${(s.autoR || s.autoJ) && r.manad === g.manad ? 'on' : ''}" data-man="${g.manad}">
+    $('forslag').innerHTML = `<div class="h" style="font-size:12px;color:var(--muted);padding-top:8px">Snabbval månadspris (utan rabatt: ${kr(r.utanTotalt / KONST.manader + KONST.adminavgift, 2)}/mån):</div>
+      <div class="chips">${r.grannar.map((g) => `<button class="chip ${r.manad === g.manad ? 'on' : ''}" data-man="${g.manad}">
         <b>${g.manad} kr/mån</b><span>${g.andring > 0 ? 'Startpaket ' + sgn(g.andring) : 'Rabatt ' + kr(-g.andring)}</span>
-        <span class="${cls(g.prov)}">Provision ${sgn(g.prov)}</span></button>`).join('')}</div>`;
+        <span class="plus">Provision ${kr(g.prov)}</span></button>`).join('')}</div>`;
 
     // Väljare
     document.querySelectorAll('#paketSeg button').forEach((b) => b.classList.toggle('on', b.dataset.paket === s.paket));
@@ -331,13 +339,12 @@
 
     // Kontrakt
     const spDelar = [fmt(r.paketPris)];
-    if (r.justering - s.autoJ) spDelar.push(sgn(r.justering - s.autoJ) + ' extra');
-    if (s.autoJ) spDelar.push(sgn(s.autoJ) + ' månadspris');
+    if (r.justering) spDelar.push(sgn(r.justering) + (s.auto ? ' månadspris' : ' extra'));
     $('kontrakt').innerHTML =
       rad(`Nytt pris startpaket<div class="h">${spDelar.join(' ')}</div>`, kr(r.nyttPrisStartpaket), 'big') +
       (r.merforsaljning ? rad('Merförsäljning', sgn(r.merforsaljning), 'plus') : '') +
       (r.borttaget ? rad('Borttaget ur paketet', sgn(-r.borttaget), 'minus') : '') +
-      (r.rabattTotalt ? rad(`Rabatt${s.autoR ? `<div class="h">${r.rabatt - s.autoR ? fmt(r.rabatt - s.autoR) + ' + ' : ''}${fmt(s.autoR)} för månadspris</div>` : ''}`, sgn(-r.rabattTotalt), 'minus') : '') +
+      (r.rabattTotalt ? rad(`Rabatt${s.auto ? '<div class="h">Anpassad efter månadspris</div>' : ''}`, sgn(-r.rabattTotalt), 'minus') : '') +
       (r.utkop ? rad('Uppsägningskompensation', kr(r.utkop)) : '') +
       rad('<b>Totalt orderbelopp</b>', kr(r.totalt), 'total') +
       rad(`<b>Månadskostnad</b> (72 mån)<div class="h">Exakt ${fmt(r.exaktManad, 2)} kr</div>`, manTxt(r.manad) + '/mån', 'big') +
